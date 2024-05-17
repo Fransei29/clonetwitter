@@ -76,10 +76,11 @@ app.post("/post", async (req, res) => {
   }
 
   const { message } = req.body;
+  console.log("Message received:", message);
 
   try {
     const postid = await redisClient.incr("postid");
-    console.log("Post ID incremented to:", postid, "and the message is:",  message);
+    console.log("Post ID incremented to:", postid, "and the message is:", message);
 
     await redisClient.hSet(
       `post:${postid}`,
@@ -88,6 +89,7 @@ app.post("/post", async (req, res) => {
       "timestamp", Date.now().toString()
     );
     
+    console.log("Post saved successfully with id:", postid);
     res.render("dashboard");
   } catch (err) {
     console.error("Error interacting with Redis:", err);
@@ -107,17 +109,18 @@ app.post("/", async (req, res) => {
   }
 
   console.log(req.body);
-
+//  FALTARIA CAMBIAR ESTO PERO DE MOMENTO NO PUEDO ------------------
   const saveSessionAndRenderDashboard = userid => {
     // Guarda el ID del usuario en la sesión y renderiza el dashboard.
-    req.session.userid = userid
+    req.session.userid = userid;
     req.session.save(err => {
       if (err) {
         return res.render('error', { message: 'Failed to save session' });
       }
-      res.render("dashboard")
+      res.render("dashboard");
     });
-  }
+  };
+
 
   const handleSignup = async (username, password) => {
     try {
