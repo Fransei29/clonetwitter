@@ -22,10 +22,12 @@
     "bcrypt": "^5.1.1",
     "connect-redis": "^7.1.1",
     "docker": "^0.2.14",
+    "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
     "git": "^0.1.5",
+    "nodemon": "^3.1.0",
     "pug": "^3.0.2",
     "redis": "^4.6.13",
     "session": "^0.1.0"

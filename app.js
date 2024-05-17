@@ -3,18 +3,25 @@ const app = express()
 const path = require("path")
 const bcrypt = require('bcrypt')
 const redis = require('redis')
-const session = require('express-session');
+const session = require('express-session')
 const RedisStore = require("connect-redis").default
+require('dotenv').config();
 
-// Conección a Redis 
+const redisHost = process.env.REDIS_HOST;
+const redisPort = process.env.REDIS_PORT;
+const sessionSecret = process.env.SESSION_SECRET;
+
+// Conexión a Redis
 const redisClient = redis.createClient({
-  host: 'redis', // Replace 'docker_container_ip' with the IP address of your Docker container or docker compose service name
-  port: 6379 // Default Redis port
+  socket: {
+    host: redisHost,
+    port: redisPort
+  }
 })
 
-redisClient.connect();
-redisClient.on('connect', async function() {
-console.log('Connected!');
+redisClient.connect().catch(console.error);
+redisClient.on('connect', () => {
+  console.log('Connected to Redis!');
 });
 
 // Initialize store.
@@ -27,9 +34,9 @@ let redisStore = new RedisStore({
 app.use(
   session({
     store: redisStore,
-    resave: false, // required: force lightweight session keep alive (touch)
-    saveUninitialized: false, // recommended: only save session when data exists
-    secret: "keyboard cat",
+    resave: false, // Mantiene la sesión activa
+    saveUninitialized: false, // Solo guarda la sesión si hay datos
+    secret: "sessionSecret",
   }),
 )
 
@@ -43,6 +50,7 @@ app.set("views", path.join(__dirname, "views"))
 
 // Ruta GET para la página inicial.
 app.get('/', (req, res) => {
+   // Si hay una sesión activa, renderiza el dashboard, de lo contrario, renderiza el login.
   if (req.session.userid) {
     res.render('dashboard')
   } else {
@@ -50,66 +58,121 @@ app.get('/', (req, res) => {
   }
 })
 
+// Ruta GET para la página de posteo de mensajes.
+app.get("/post", (req, res) => {
+  if (req.session.userid) {
+    res.render("post")
+  } else {
+    res.render("login")
+  }
+})
 
-// Ruta GET para la página de error.
-app.get("/error", (req, res) => res.render("error"))
+// Ruta POST para que antes de postear un mensaje, si no ingreso, lo redirija al login. Luego incrementa el valor del post id para que sea unico
+app.post("/post", async (req, res) => {
+  if (!req.session.userid) {
+    console.log("No session found, redirecting to login");
+    res.render("login");
+    return;
+  }
+
+  const { message } = req.body;
+
+  try {
+    const postid = await redisClient.incr("postid");
+    console.log("Post ID incremented to:", postid, "and the message is:",  message);
+
+    await redisClient.hSet(
+      `post:${postid}`,
+      "userid", req.session.userid,
+      "message", message,
+      "timestamp", Date.now().toString()
+    );
+    
+    res.render("dashboard");
+  } catch (err) {
+    console.error("Error interacting with Redis:", err);
+    res.render("error", { message: "Error creating post" });
+  }
+});
+
 
 // Ruta POST para manejar el login y el registro.
 app.post("/", async (req, res) => {
-    const { username, password } = req.body;
-  
-    if (!username || !password) {
-      res.render("error", {
-        message: "Please set both username and password",
-      })
-      return
-    }
+  const { username, password } = req.body;
 
-console.log(req.body, username, password);
-    res.end()
-
-    const saveSessionAndRenderDashboard = userid => {
-      req.session.userid = userid
-      req.session.save()
-      res.render("dashboard")
-    }
-
-    const handleSignup = (username, password) => {
-      redisClient.incr('userid', async (err, userid) => {
-        redisClient.hSet('users', username, userid)
-        
-        const saltRounds = 10
-        const hash = await bcrypt.hash(password, saltRounds)
-        
-        redisClient.hSet(`user:${userid}`, 'hash', hash, 'username', username)
-        
-        saveSessionAndRenderDashboard(userid)
+  if (!username || !password) {
+    return res.render("error", {
+      message: "Please set both username and password",
     })
   }
-     const handleLogin = (userid, password) => {
-      client.hget(`user:${userid}`, 'hash', async (err, hash) => {
-        const result = await bcrypt.compare(password, hash)
-        if (result) {
-          saveSessionAndRenderDashboard(userid)
-        } else {
-          res.render('error', {
-            message: 'Incorrect password',
-          })
-          return
-        }
-      })
-    }
-     
-    redisClient.hGet('users', username, (err, userid) => {
-      if (!userid) {
-        //user does not exist, signup procedure
-        handleSignup(username, password)
-      } else {
-        handleLogin(userid, password)
-        }
-    })     
- })
 
+  console.log(req.body);
+
+  const saveSessionAndRenderDashboard = userid => {
+    // Guarda el ID del usuario en la sesión y renderiza el dashboard.
+    req.session.userid = userid
+    req.session.save(err => {
+      if (err) {
+        return res.render('error', { message: 'Failed to save session' });
+      }
+      res.render("dashboard")
+    });
+  }
+
+  const handleSignup = async (username, password) => {
+    try {
+       // Crea un nuevo ID de usuario y lo asigna al nombre de usuario proporcionado.
+      const userid = await redisClient.incr('userid');
+      await redisClient.hSet('users', username, userid);
+
+      // Genera un hash de la contraseña y lo guarda junto con el nombre de usuario en Redis.
+      const saltRounds = 10;
+      const hash = await bcrypt.hash(password, saltRounds);
+      
+      await redisClient.hSet(`user:${userid}`, { hash, username });
+      
+      // Guarda la sesión y renderiza el dashboard.
+      saveSessionAndRenderDashboard(userid);
+    } catch (err) {
+      console.error(err);
+      res.render("error", { message: "Error during signup" });
+    }
+  }
+
+  const handleLogin = async (userid, password) => {
+    try {
+      // Obtiene el hash de la contraseña del usuario desde Redis
+      const hash = await redisClient.hGet(`user:${userid}`, 'hash');
+
+      // Compara la contraseña proporcionada con el hash almacenado.
+      const result = await bcrypt.compare(password, hash);
+
+      if (result) {
+        saveSessionAndRenderDashboard(userid); // Si la contraseña es correcta, guarda la sesión y renderiza el dashboard.
+      } else {
+        res.render('error', { message: 'Incorrect password' }); // Si la contraseña es incorrecta, muestra un mensaje de error.
+      }
+    } catch (err) {
+      console.error(err);
+      res.render("error", { message: "Error during login" });
+    }
+  }
+
+  try {
+    // Busca el ID de usuario basado en el nombre de usuario proporcionado.
+    const userid = await redisClient.hGet('users', username);
+    if (!userid) {
+      // Si el usuario no existe, se realiza el registro
+      await handleSignup(username, password);
+    } else {
+      // Si el usuario existe, se realiza el inicio de sesión
+      await handleLogin(userid, password);
+    }
+  } catch (err) {
+    console.error(err);
+    res.render("error", { message: "Error during authentication" });
+  }
+})
 
 app.listen(3000, () => console.log("Server ready"))
 
