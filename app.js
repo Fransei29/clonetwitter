@@ -49,12 +49,16 @@ app.set("view engine", "pug")
 app.set("views", path.join(__dirname, "views"))
 
 // Ruta GET para la página inicial.
-app.get('/', (req, res) => {
-   // Si hay una sesión activa, renderiza el dashboard, de lo contrario, renderiza el login.
+app.get("/", (req, res) => {
   if (req.session.userid) {
-    res.render('dashboard')
+    redisClient.hKeys("users", (err, users) => {
+      console.log(users)
+      res.render("dashboard", {
+        users,
+      })
+    })
   } else {
-    res.render('login')
+    res.render("login")
   }
 })
 
