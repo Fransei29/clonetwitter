@@ -1,3 +1,4 @@
+// Importación de módulos necesarios
 const express = require("express")
 const path = require("path")
 const bcrypt = require('bcrypt')
@@ -8,9 +9,10 @@ require('dotenv').config();
 const { promisify } = require('util')
 const { formatDistance } = require("date-fns")
 
+// Inicialización de la aplicación Express
 const app = express()
 
-
+// Configuración de variables de entorno
 const redisHost = process.env.REDIS_HOST;
 const redisPort = process.env.REDIS_PORT || 6379;
 const sessionSecret = process.env.SESSION_SECRET;
@@ -24,8 +26,7 @@ const client = redis.createClient({
 })
 client.on('error', (err) => console.log('Redis Client Error', err));
 
-
-
+// Promisificación de métodos Redis para uso asincrónico
 const ahget = promisify(client.hget).bind(client)
 const asmembers = promisify(client.smembers).bind(client)
 const ahkeys = promisify(client.hkeys).bind(client)
@@ -37,13 +38,13 @@ const alrange = promisify(client.lrange).bind(client)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// // Initialize store.
+// Inicializar store.
 const redisStore = new RedisStore({
   client: client,
   prefix: "myapp:",
 })
 
-// Initialize session storage.
+// Configuracion del middleware para la sesión
 app.use(
   session({
     store: redisStore,
@@ -65,20 +66,27 @@ app.set("views", path.join(__dirname, "views"))
 // Ruta GET para la página inicial.
 app.get('/', async (req, res) => {
   if (req.session.userid) {
+    // Obtener el nombre de usuario del ID de sesión
     const currentUserName = await ahget(`user:${req.session.userid}`, 'username')
-    const following = await asmembers(`following:${currentUserName}`)    
+    // Obtener la lista de usuarios seguidos
+    const following = await asmembers(`following:${currentUserName}`)   
+    // Obtener la lista de todos los usuarios 
     const users = await ahkeys('users')
     
     const timeline = []
+    // Obtener los IDs de los posts del timeline del usuario actual (máximo 100 posts)
     const posts = await alrange(`timeline:${currentUserName}`, 0, 100)
 
+    // Iterar sobre los IDs de los posts para obtener los datos de cada post
     for (post of posts) {
+      // Obtener el timestamp del post
       const timestamp = await ahget(`post:${post}`, 'timestamp')
+      // Convertir el timestamp a una cadena de tiempo legible (ej. "hace 5 minutos")
       const timeString = formatDistance(
         new Date(),
         new Date(parseInt(timestamp))
       )
-
+      // Añadir los datos del post al timeline
       timeline.push({
         message: await ahget(`post:${post}`, 'message'),
         author: await ahget(`post:${post}`, 'username'),
@@ -109,7 +117,7 @@ app.get('/post', (req, res) => {
 })
 
 
-// Ruta POST para que antes de postear un mensaje, si no ingreso, lo redirija al login. Luego incrementa el valor del post id para que sea unico
+// Ruta POST para postear un mensaje.
 app.post('/post', async (req, res) => {
   if (!req.session.userid) {
     res.render('login')
@@ -119,9 +127,12 @@ app.post('/post', async (req, res) => {
   const { message } = req.body
   const currentUserName = await ahget(`user:${req.session.userid}`, 'username')
   const postid = await aincr('postid')
+   // Guardar el mensaje en Redis
   client.hmset(`post:${postid}`, 'userid', req.session.userid, 'username', currentUserName, 'message', message, 'timestamp', Date.now())
+  // Agregar el post al timeline del usuario actual
   client.lpush(`timeline:${currentUserName}`, postid)
-
+  
+  // Agregar el post al timeline de los seguidores
   const followers = await asmembers(`followers:${currentUserName}`)
   for (follower of followers) {
     client.lpush(`timeline:${follower}`, postid)
@@ -139,6 +150,7 @@ app.post('/follow', (req, res) => {
 
   const { username } = req.body
   
+  // Agregar el usuario a la lista de seguidos y seguidores
   client.hget(`user:${req.session.userid}`, 'username', (err, currentUserName) => {
     client.sadd(`following:${currentUserName}`, username)
     client.sadd(`followers:${username}`, currentUserName)
@@ -157,13 +169,15 @@ app.post('/', (req, res) => {
     })
     return
   }
-
+  
+  // Guardar la sesión y renderizar el dashboard
   const saveSessionAndRenderDashboard = userid => {
     req.session.userid = userid
     req.session.save()
     res.redirect('/')
   }
-
+  
+  // Manejar el registro de usuario
   const handleSignup = (username, password) => {
     client.incr('userid', async (err, userid) => {
       client.hset('users', username, userid)
@@ -176,7 +190,8 @@ app.post('/', (req, res) => {
       saveSessionAndRenderDashboard(userid)
     })
   }
-
+  
+  // Manejar el login de usuario
   const handleLogin = (userid, password) => {
     client.hget(`user:${userid}`, 'hash', async (err, hash) => {
       const result = await bcrypt.compare(password, hash)
@@ -190,17 +205,16 @@ app.post('/', (req, res) => {
       }
     })
   }
-
+  
+  // Verificar si el usuario existe en Redis y manejar login o registro
   client.hget('users', username, (err, userid) => {
-    if (!userid) { //signup procedure
+    if (!userid) { //signup
       handleSignup(username, password)
-    } else { //login procedure
+    } else { //login 
       handleLogin(userid, password)
     }
   })
 })
-
-
 
 
 app.listen(3000, () => console.log("Server ready"))
