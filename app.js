@@ -13,15 +13,13 @@ const { formatDistance } = require("date-fns")
 const app = express()
 
 // Configuración de variables de entorno
-const redisHost = process.env.REDIS_HOST;
-const redisPort = process.env.REDIS_PORT || 6379;
 const sessionSecret = process.env.SESSION_SECRET;
 
 // Conexión a Redis
 const client = redis.createClient({
   socket: {
-    host: redisHost,
-    port: redisPort
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT
   }
 })
 client.on('error', (err) => console.log('Redis Client Error', err));
@@ -32,7 +30,6 @@ const asmembers = promisify(client.smembers).bind(client)
 const ahkeys = promisify(client.hkeys).bind(client)
 const aincr = promisify(client.incr).bind(client)
 const alrange = promisify(client.lrange).bind(client)
-
 
 // Middlewares para procesar datos JSON y datos codificados en URL.
 app.use(express.json());
@@ -217,5 +214,5 @@ app.post('/', (req, res) => {
 })
 
 
-app.listen(3000, () => console.log("Server ready"))
+app.listen(3001, () => console.log("Server ready"))
 
