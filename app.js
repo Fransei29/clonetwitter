@@ -58,7 +58,7 @@ app.use(
 
 // Configuración del motor de plantillas para usar archivos HTML.
 app.set("view engine", "pug")
-app.set("views", path.join(__dirname, "views"))
+app.set('views', path.join(__dirname, 'public', 'views'));
 
 // Ruta GET para la página inicial.
 app.get('/', async (req, res) => {
