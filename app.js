@@ -19,7 +19,9 @@ const sessionSecret = process.env.SESSION_SECRET;
 const client = redis.createClient({
   socket: {
     host: process.env.REDIS_HOST,
-    port: process.env.REDIS_PORT
+    port: process.env.REDIS_PORT,
+    password: process.env.REDIS_PASSWORD,
+    tls: { rejectUnauthorized: false }
   }
 })
 client.on('error', (err) => console.log('Redis Client Error', err));
