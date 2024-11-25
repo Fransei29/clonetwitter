@@ -114,6 +114,16 @@ app.get('/post', (req, res) => {
   }
 })
 
+// Ruta GET para cerrar sesión
+app.get("/logout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("Error al cerrar sesión:", err);
+      return res.status(500).send("No se pudo cerrar la sesión.");
+    }
+    res.redirect("/"); // Redirige al formulario de ingreso
+  });
+});
 
 // Ruta POST para postear un mensaje.
 app.post('/post', async (req, res) => {
