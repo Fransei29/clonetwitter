@@ -21,7 +21,9 @@ const client = redis.createClient({
     host: process.env.REDIS_HOST,
     port: process.env.REDIS_PORT,
     password: process.env.REDIS_PASSWORD,
-    tls: { rejectUnauthorized: false }
+    tls: {
+      rejectUnauthorized: false, // Necesario para Upstash
+  }
   }
 })
 client.on('error', (err) => console.log('Redis Client Error', err));
