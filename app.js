@@ -7,7 +7,8 @@ const redis = require('redis')
 const RedisStore = require("connect-redis")(session);
 require('dotenv').config();
 const { promisify } = require('util')
-const { formatDistance } = require("date-fns")
+const { formatDistance } = require("date-fns");
+const { createClient } = require("redis");
 
 // Inicialización de la aplicación Express
 const app = express()
@@ -15,17 +16,13 @@ const app = express()
 // Configuración de variables de entorno
 const sessionSecret = process.env.SESSION_SECRET;
 
-// Conexión a Redis
-const client = redis.createClient({
-  socket: {
-    host: process.env.REDIS_HOST,
-    port: process.env.REDIS_PORT,
-    password: process.env.REDIS_PASSWORD,
-    tls: {
-      rejectUnauthorized: false, // Necesario para Upstash
-  }
-  }
-})
+
+// Conexión a Redis usando la URL completa (sugerida por Upstash)
+const client = createClient({
+  url: process.env.REDIS_URL, // Define esta variable en tu archivo .env
+});
+
+
 client.on('error', (err) => console.log('Redis Client Error', err));
 
 // Promisificación de métodos Redis para uso asincrónico
